@@ -1,0 +1,17 @@
+[Unit]
+Description=System Metrics Collector Service
+After=network.target
+
+[Service]
+Type=simple
+User=system-collector
+Group=system-collector
+WorkingDirectory=/opt/system-collector
+ExecStart=/opt/system-collector/server.exec
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target 
