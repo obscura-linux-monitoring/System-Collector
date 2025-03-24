@@ -1,3 +1,5 @@
 #!/bin/bash
 
-go build -o bin/server.exe cmd/server/main.go
+rm -f bin/*
+
+go build -o bin/server.exec cmd/server/main.go
