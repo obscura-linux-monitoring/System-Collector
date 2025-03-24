@@ -1,0 +1,12 @@
+server:
+  host: "0.0.0.0"
+  port: 8087
+
+influxdb:
+  url: "http://localhost:8086"
+  token: "y9VwBZ2l13p1JPuBC9jffWojhnTmUG4N4wygIzhOhOOlyNf1MrJlVgRglw6uvpcRDQfc7umLsOhoL28i88Kinw=="
+  org: "hoseo"
+  bucket: "dev-test"
+  
+collector:
+  interval: 1 # 수집 간격(초)
