@@ -1,10 +1,13 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
 	config "system-collector/configs"
 	"system-collector/internal/repository"
@@ -14,20 +17,23 @@ import (
 )
 
 type Server struct {
-	upgrader websocket.Upgrader
-	store    func(*models.SystemMetrics) error
-	cmdRepo  *repository.CommandRepository
+	upgrader   websocket.Upgrader
+	store      func(*models.SystemMetrics) error
+	cmdRepo    *repository.CommandRepository
+	clients    sync.Map
+	maxClients int
 }
 
 func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository) *Server {
 	return &Server{
 		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true // 개발용, 실제 환경에서는 적절한 검사 필요
-			},
+			CheckOrigin:     func(r *http.Request) bool { return true },
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
 		},
-		store:   store,
-		cmdRepo: cmdRepo,
+		store:      store,
+		cmdRepo:    cmdRepo,
+		maxClients: 1000,
 	}
 }
 
@@ -42,12 +48,8 @@ func (s *Server) Start() {
 	}
 }
 
-// 별도의 함수로 분리하여 재사용성 높임
-func handleDisconnect(r *http.Request, code int, text string) {
-	log.Printf("Client %s disconnected with code %d: %s", r.RemoteAddr, code, text)
-}
-
 func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
+	start := time.Now()
 	var metrics models.SystemMetrics
 	if err := json.Unmarshal(message, &metrics); err != nil {
 		s.sendErrorResponse(conn, "메시지 파싱 오류")
@@ -82,6 +84,9 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		}
 	}
 
+	// 응답 전송 전에 데드라인 설정
+	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+
 	// 응답 전송
 	response := models.WSResponse{
 		Type:     "metrics_response",
@@ -91,9 +96,15 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 	if err := conn.WriteJSON(response); err != nil {
 		log.Printf("응답 전송 실패: %v", err)
 	}
+
+	elapsed := time.Since(start)
+	log.Printf("응답 전송 완료: %v ms", elapsed.Milliseconds())
 }
 
 func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
+	// 쓰기 작업 전에 데드라인 설정
+	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+
 	response := models.WSResponse{
 		Type:  "error",
 		Error: errMsg,
@@ -103,37 +114,99 @@ func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
 	}
 }
 
+func (s *Server) handleDisconnect(clientID string, code int, text string) {
+	log.Printf("클라이언트 %s 연결 종료 (코드: %d, 사유: %s)", clientID, code, text)
+	if conn, ok := s.clients.LoadAndDelete(clientID); ok {
+		if websocketConn, ok := conn.(*websocket.Conn); ok {
+			websocketConn.Close()
+		}
+	}
+}
+
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
-	conn, err := s.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("Error upgrading connection: %v", err)
+	clientCount := 0
+	s.clients.Range(func(_, _ interface{}) bool {
+		clientCount++
+		return true
+	})
+	if clientCount >= s.maxClients {
+		log.Printf("최대 클라이언트 수 초과: %s", r.RemoteAddr)
+		http.Error(w, "서버가 최대 용량에 도달했습니다", http.StatusServiceUnavailable)
 		return
 	}
 
-	// SetCloseHandler로 disconnect 처리
-	conn.SetCloseHandler(func(code int, text string) error {
-		handleDisconnect(r, code, text)
+	conn, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("연결 업그레이드 실패: %v", err)
+		return
+	}
+
+	// 읽기 데드라인만 설정하고 쓰기 데드라인은 각 쓰기 작업마다 설정하도록 수정
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
-	// 클라이언트 접속 로그 추가
-	log.Printf("New client connected from %s", r.RemoteAddr)
-	defer conn.Close()
+	clientID := r.RemoteAddr
+	s.clients.Store(clientID, conn)
+	defer func() {
+		s.clients.Delete(clientID)
+		conn.Close()
+	}()
+
+	// ping-pong 처리를 위한 고루틴
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		// for range로 수정
+		for range ticker.C {
+			if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second)); err != nil {
+				log.Printf("Ping 실패: %v", err)
+				return
+			}
+		}
+	}()
+
+	log.Printf("새로운 클라이언트 연결: %s", clientID)
 
 	for {
-		_, message, err := conn.ReadMessage()
+		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Unexpected close error from %s: %v", r.RemoteAddr, err)
+				s.handleDisconnect(clientID, websocket.CloseAbnormalClosure, err.Error())
 			}
-			handleDisconnect(r, websocket.CloseAbnormalClosure, err.Error())
 			break
 		}
 
-		// 모든 수신 메시지에 대한 로깅 추가
-		log.Printf("Message received from %s (length: %d bytes)", r.RemoteAddr, len(message))
+		// if len(message) > 1024*1024 {
+		// 	s.sendErrorResponse(conn, "메시지가 너무 큽니다")
+		// 	continue
+		// }
 
-		// 메시지 처리를 고루틴으로 실행
-		go s.handleMessage(conn, message)
+		if messageType != websocket.TextMessage {
+			s.sendErrorResponse(conn, "잘못된 메시지 타입")
+			continue
+		}
+
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			done := make(chan struct{})
+			go func() {
+				s.handleMessage(conn, message)
+				close(done)
+			}()
+
+			select {
+			case <-ctx.Done():
+				log.Printf("메시지 처리 시간 초과: %s", clientID)
+				s.sendErrorResponse(conn, "처리 시간 초과")
+			case <-done:
+			}
+		}()
 	}
 }
