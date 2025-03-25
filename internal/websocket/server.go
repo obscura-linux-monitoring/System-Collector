@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	config "system-collector/configs"
+	"system-collector/internal/repository"
 	"system-collector/pkg/models"
 
 	"github.com/gorilla/websocket"
@@ -15,16 +16,18 @@ import (
 type Server struct {
 	upgrader websocket.Upgrader
 	store    func(*models.SystemMetrics) error
+	cmdRepo  *repository.CommandRepository
 }
 
-func NewServer(store func(*models.SystemMetrics) error) *Server {
+func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository) *Server {
 	return &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // 개발용, 실제 환경에서는 적절한 검사 필요
 			},
 		},
-		store: store,
+		store:   store,
+		cmdRepo: cmdRepo,
 	}
 }
 
@@ -42,6 +45,62 @@ func (s *Server) Start() {
 // 별도의 함수로 분리하여 재사용성 높임
 func handleDisconnect(r *http.Request, code int, text string) {
 	log.Printf("Client %s disconnected with code %d: %s", r.RemoteAddr, code, text)
+}
+
+func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
+	var metrics models.SystemMetrics
+	if err := json.Unmarshal(message, &metrics); err != nil {
+		s.sendErrorResponse(conn, "메시지 파싱 오류")
+		return
+	}
+
+	// Key 검증
+	if metrics.Key == "" {
+		s.sendErrorResponse(conn, "키가 없는 메트릭스")
+		return
+	}
+
+	log.Printf("메트릭스 키: %s", metrics.Key)
+
+	// 메트릭스 저장
+	if err := s.store(&metrics); err != nil {
+		s.sendErrorResponse(conn, "메트릭스 저장 실패")
+		return
+	}
+
+	// 해당 노드의 명령어 조회
+	commands, err := s.cmdRepo.GetCommandsByNodeID(metrics.Key)
+	if err != nil {
+		log.Printf("명령어 조회 실패: %v", err)
+		// 명령어 조회 실패해도 메트릭스는 정상 응답
+		commands = []models.Command{}
+	} else {
+		log.Printf("명령어 조회 성공: %v", commands)
+		err = s.cmdRepo.DeleteCommandsByNodeID(metrics.Key)
+		if err != nil {
+			log.Printf("명령어 삭제 실패: %v", err)
+		}
+	}
+
+	// 응답 전송
+	response := models.WSResponse{
+		Type:     "metrics_response",
+		Commands: commands,
+	}
+
+	if err := conn.WriteJSON(response); err != nil {
+		log.Printf("응답 전송 실패: %v", err)
+	}
+}
+
+func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
+	response := models.WSResponse{
+		Type:  "error",
+		Error: errMsg,
+	}
+	if err := conn.WriteJSON(response); err != nil {
+		log.Printf("에러 응답 전송 실패: %v", err)
+	}
 }
 
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
@@ -74,30 +133,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		// 모든 수신 메시지에 대한 로깅 추가
 		log.Printf("Message received from %s (length: %d bytes)", r.RemoteAddr, len(message))
 
-		// 메시지 처리를 별도 고루틴으로 분리하여 다음 메시지를 즉시 수신할 수 있도록 함
-		go func(msg []byte) {
-			// 수신된 메시지를 SystemMetrics로 파싱
-			var metrics models.SystemMetrics
-			if err := json.Unmarshal(msg, &metrics); err != nil {
-				log.Printf("Error parsing message: %v", err)
-				return
-			}
-
-			// Key 검증
-			if metrics.Key == "" {
-				log.Printf("Received metrics without key")
-				return
-			}
-
-			// 받은 메트릭 데이터를 보기 좋게 출력
-			log.Printf("Successfully processed metrics from %s with timestamp %v", r.RemoteAddr, metrics.Timestamp)
-
-			// InfluxDB에 저장
-			if err := s.store(&metrics); err != nil {
-				log.Printf("Error storing metrics: %v", err)
-				return
-			}
-			log.Printf("Metrics successfully stored in database")
-		}(message)
+		// 메시지 처리를 고루틴으로 실행
+		go s.handleMessage(conn, message)
 	}
 }
