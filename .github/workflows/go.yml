@@ -1,6 +1,3 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
 name: Go
 
 on:
@@ -10,19 +7,37 @@ on:
     branches: [ "master" ]
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-
+    
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.23.1'
-
+    
     - name: Build
-      run: go build -v ./...
-
+      run: go build -v -o myapp ./...
+    
     - name: Test
       run: go test -v ./...
+      
+    - name: Generate release version
+      id: release_version
+      run: |
+        echo "VERSION=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_OUTPUT
+      
+    - name: Create Release
+      if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: release-${{ steps.release_version.outputs.VERSION }}
+        name: Release ${{ steps.release_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        files: |
+          server.exec
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
