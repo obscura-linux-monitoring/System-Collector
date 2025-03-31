@@ -75,18 +75,30 @@ create_directories() {
 # 파일 다운로드
 download_files() {
     echo "실행 파일 다운로드 중..."
-    wget -O $BIN_DIR/server.exec $DOWNLOAD_EXCUABLE_URL || return 1
-    chmod +x $BIN_DIR/server.exec || return 1
+    if ! wget -O $BIN_DIR/server.exec $DOWNLOAD_EXCUABLE_URL; then
+        echo -e "${RED}실행 파일 다운로드 실패${NC}"
+        return 1
+    fi
+    chmod +x $BIN_DIR/server.exec
 
     echo "설정 파일 다운로드 중..."
-    wget -O $CONFIG_DIR/config.yaml $DOWNLOAD_CONFIG_URL || return 1
+    if ! wget -O $CONFIG_DIR/config.yaml $DOWNLOAD_CONFIG_URL; then
+        echo -e "${RED}설정 파일 다운로드 실패${NC}"
+        return 1
+    fi
 
     echo "서비스 파일 다운로드 중..."
-    wget -O /etc/systemd/system/$SERVICE_NAME.service $DOWNLOAD_SERVICE_URL || return 1
+    if ! wget -O /etc/systemd/system/$SERVICE_NAME.service $DOWNLOAD_SERVICE_URL; then
+        echo -e "${RED}서비스 파일 다운로드 실패${NC}"
+        return 1
+    fi
     
     echo "언인스톨 스크립트 다운로드 중..."
-    wget -O $INSTALL_DIR/uninstall.sh $DOWNLOAD_UNINSTALL_SCRIPT_URL || return 1
-    chmod +x $INSTALL_DIR/uninstall.sh || return 1
+    if ! wget -O $INSTALL_DIR/uninstall.sh $DOWNLOAD_UNINSTALL_SCRIPT_URL; then
+        echo -e "${RED}언인스톨 스크립트 다운로드 실패${NC}"
+        return 1
+    fi
+    chmod +x $INSTALL_DIR/uninstall.sh
     
     echo "파일 다운로드 완료"
     return 0
