@@ -23,7 +23,7 @@
 ## 설치 방법
 
 ```shell
-sudo wget -O /tmp/install.sh https://github.com/obscura-linux-monitoring/System-Collector/releases/download/dev/install.sh && sudo sh /tmp/install.sh
+sudo wget -O /tmp/install.sh https://github.com/obscura-linux-monitoring/System-Collector/releases/download/[version]/install.sh && sudo sh /tmp/install.sh
 ```
 
 ## 프로젝트 구조
