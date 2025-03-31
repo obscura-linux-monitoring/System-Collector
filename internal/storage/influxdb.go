@@ -3,9 +3,9 @@ package storage
 import (
 	"context"
 	"fmt"
-	"log"
 
 	config "system-collector/configs"
+	"system-collector/pkg/logger"
 	"system-collector/pkg/models"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -22,6 +22,9 @@ type InfluxDBClient struct {
 }
 
 func NewInfluxDBClient() (*InfluxDBClient, error) {
+	sugar := logger.GetSugar()
+	sugar.Info("InfluxDBClient 초기화 중")
+
 	cfg := config.Get()
 
 	options := influxdb2.DefaultOptions()
@@ -38,6 +41,7 @@ func NewInfluxDBClient() (*InfluxDBClient, error) {
 	// 연결 테스트
 	_, err := client.Ping(context.Background())
 	if err != nil {
+		sugar.Errorw("InfluxDB 연결 테스트 실패", "error", err)
 		return nil, err
 	}
 
@@ -48,7 +52,7 @@ func NewInfluxDBClient() (*InfluxDBClient, error) {
 	errorsCh := writeAPI.Errors()
 	go func() {
 		for err := range errorsCh {
-			log.Printf("InfluxDB 쓰기 오류: %v", err)
+			sugar.Errorw("InfluxDB 쓰기 오류", "error", err)
 		}
 	}()
 
@@ -61,18 +65,31 @@ func NewInfluxDBClient() (*InfluxDBClient, error) {
 }
 
 func (i *InfluxDBClient) WritePoints(points []*write.Point) {
+	sugar := logger.GetSugar()
+	sugar.Info("InfluxDBClient 쓰기 시작")
+
 	for _, p := range points {
 		i.writeAPI.WritePoint(p)
 	}
+
+	sugar.Info("InfluxDBClient 쓰기 완료")
 }
 
 func (i *InfluxDBClient) Close() {
+	sugar := logger.GetSugar()
+	sugar.Info("InfluxDBClient 종료 중")
+
 	// 닫기 전에 남은 데이터 플러시
 	i.writeAPI.Flush()
 	i.client.Close()
+
+	sugar.Info("InfluxDBClient 종료 완료")
 }
 
 func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
+	sugar := logger.GetSugar()
+	sugar.Info("InfluxDBClient 메트릭스 저장 시작")
+
 	points := make([]*write.Point, 0, 100) // 예상 포인트 수로 초기화
 
 	// 시스템 기본 태그
@@ -281,5 +298,6 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 	// 모든 포인트를 한 번에 전송
 	i.WritePoints(points)
 
+	sugar.Info("InfluxDBClient 메트릭스 저장 완료")
 	return nil
 }

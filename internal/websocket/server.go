@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	config "system-collector/configs"
 	"system-collector/internal/repository"
+	"system-collector/pkg/logger"
 	"system-collector/pkg/models"
 
 	"github.com/gorilla/websocket"
@@ -21,11 +21,23 @@ type Server struct {
 	store      func(*models.SystemMetrics) error
 	cmdRepo    *repository.CommandRepository
 	userRepo   *repository.UserRepository
+	nodeRepo   *repository.NodeRepository
+	nodeList   []*models.Node
 	clients    sync.Map
 	maxClients int
 }
 
-func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository, userRepo *repository.UserRepository) *Server {
+func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository, userRepo *repository.UserRepository, nodeRepo *repository.NodeRepository) *Server {
+	sugar := logger.GetSugar()
+	sugar.Info("Server 초기화 중")
+
+	// 사용자 목록 조회
+	nodes, err := nodeRepo.GetAllNodes()
+	if err != nil {
+		sugar.Errorw("사용자 목록 조회 실패", "error", err)
+		nodes = []*models.Node{} // 빈 배열로 초기화
+	}
+
 	return &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin:     func(r *http.Request) bool { return true },
@@ -35,45 +47,82 @@ func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.Comm
 		store:      store,
 		cmdRepo:    cmdRepo,
 		userRepo:   userRepo,
+		nodeRepo:   nodeRepo,
+		nodeList:   nodes, // 조회한 사용자 목록 설정
 		maxClients: 1000,
 	}
 }
 
 func (s *Server) Start() {
+	sugar := logger.GetSugar()
+	sugar.Info("WebSocket server 시작 중")
+
 	http.HandleFunc("/ws", s.handleConnections)
 
 	cfg := config.Get()
-	log.Printf("WebSocket server starting on :%d", cfg.Server.Port)
+	sugar.Infof("WebSocket server starting on :%d", cfg.Server.Port)
 	err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Server.Port), nil)
 	if err != nil {
-		log.Fatalf("WebSocket server failed to start: %v", err)
+		sugar.Errorf("WebSocket server failed to start: %v", err)
 	}
 }
 
 func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
+	sugar := logger.GetSugar()
+	sugar.Info("handleMessage 시작")
+
 	start := time.Now()
 	var metrics models.SystemMetrics
 	if err := json.Unmarshal(message, &metrics); err != nil {
+		sugar.Errorw("메시지 파싱 오류", "error", err)
 		s.sendErrorResponse(conn, "메시지 파싱 오류")
 		return
 	}
 
 	exists, err := s.userRepo.ExistsUserByObscuraKey(metrics.USER_ID)
 	if err != nil || !exists {
+		sugar.Errorw("사용자 조회 실패", "error", err)
 		s.sendErrorResponse(conn, "사용자 조회 실패")
 		return
 	}
 
 	// Key 검증
 	if metrics.Key == "" {
+		sugar.Errorw("키가 없는 메트릭스")
 		s.sendErrorResponse(conn, "키가 없는 메트릭스")
 		return
 	}
 
-	log.Printf("메트릭스 키: %s", metrics.Key)
+	nodeExists := false
+	for _, node := range s.nodeList {
+		if node.NodeID == metrics.Key {
+			nodeExists = true
+			break
+		}
+	}
+
+	if !nodeExists {
+		node := models.Node{
+			NodeID:     metrics.Key,
+			ObscuraKey: metrics.USER_ID,
+			ServerType: false, // TODO: 서버 타입 추가
+		}
+		err := s.nodeRepo.CreateNode(&node)
+		if err != nil {
+			sugar.Errorw("노드 생성 실패", "error", err)
+		} else {
+			sugar.Infof("노드 생성 성공: %s", metrics.Key)
+			s.nodeList = append(s.nodeList, &models.Node{
+				NodeID: metrics.Key,
+			})
+		}
+	}
+
+	sugar.Infof("메트릭스 키: %s", metrics.Key)
 
 	// 메트릭스 저장
 	if err := s.store(&metrics); err != nil {
+		sugar.Errorw("메트릭스 저장 실패", "error", err)
 		s.sendErrorResponse(conn, "메트릭스 저장 실패")
 		return
 	}
@@ -81,14 +130,14 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 	// 해당 노드의 명령어 조회
 	commands, err := s.cmdRepo.GetCommandsByNodeID(metrics.Key)
 	if err != nil {
-		log.Printf("명령어 조회 실패: %v", err)
+		sugar.Errorw("명령어 조회 실패", "error", err)
 		// 명령어 조회 실패해도 메트릭스는 정상 응답
 		commands = []models.Command{}
 	} else {
-		log.Printf("명령어 조회 성공: %v", commands)
+		sugar.Infof("명령어 조회 성공: %v", commands)
 		err = s.cmdRepo.DeleteCommandsByNodeID(metrics.Key)
 		if err != nil {
-			log.Printf("명령어 삭제 실패: %v", err)
+			sugar.Errorw("명령어 삭제 실패", "error", err)
 		}
 	}
 
@@ -102,14 +151,17 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 	}
 
 	if err := conn.WriteJSON(response); err != nil {
-		log.Printf("응답 전송 실패: %v", err)
+		sugar.Errorw("응답 전송 실패", "error", err)
 	}
 
 	elapsed := time.Since(start)
-	log.Printf("응답 전송 완료: %v ms", elapsed.Milliseconds())
+	sugar.Infof("응답 전송 완료: %v ms", elapsed.Milliseconds())
 }
 
 func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
+	sugar := logger.GetSugar()
+	sugar.Info("sendErrorResponse 시작")
+
 	// 쓰기 작업 전에 데드라인 설정
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
@@ -118,12 +170,13 @@ func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
 		Error: errMsg,
 	}
 	if err := conn.WriteJSON(response); err != nil {
-		log.Printf("에러 응답 전송 실패: %v", err)
+		sugar.Errorw("에러 응답 전송 실패", "error", err)
 	}
 }
 
 func (s *Server) handleDisconnect(clientID string, code int, text string) {
-	log.Printf("클라이언트 %s 연결 종료 (코드: %d, 사유: %s)", clientID, code, text)
+	sugar := logger.GetSugar()
+	sugar.Infof("클라이언트 %s 연결 종료 (코드: %d, 사유: %s)", clientID, code, text)
 	if conn, ok := s.clients.LoadAndDelete(clientID); ok {
 		if websocketConn, ok := conn.(*websocket.Conn); ok {
 			websocketConn.Close()
@@ -132,20 +185,23 @@ func (s *Server) handleDisconnect(clientID string, code int, text string) {
 }
 
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
+	sugar := logger.GetSugar()
+	sugar.Info("handleConnections 시작")
+
 	clientCount := 0
 	s.clients.Range(func(_, _ interface{}) bool {
 		clientCount++
 		return true
 	})
 	if clientCount >= s.maxClients {
-		log.Printf("최대 클라이언트 수 초과: %s", r.RemoteAddr)
+		sugar.Infof("최대 클라이언트 수 초과: %s", r.RemoteAddr)
 		http.Error(w, "서버가 최대 용량에 도달했습니다", http.StatusServiceUnavailable)
 		return
 	}
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("연결 업그레이드 실패: %v", err)
+		sugar.Errorw("연결 업그레이드 실패", "error", err)
 		return
 	}
 
@@ -172,13 +228,13 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 		// for range로 수정
 		for range ticker.C {
 			if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second)); err != nil {
-				log.Printf("Ping 실패: %v", err)
+				sugar.Errorw("Ping 실패", "error", err)
 				return
 			}
 		}
 	}()
 
-	log.Printf("새로운 클라이언트 연결: %s", clientID)
+	sugar.Infof("새로운 클라이언트 연결: %s", clientID)
 
 	for {
 		messageType, message, err := conn.ReadMessage()
@@ -211,7 +267,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 			select {
 			case <-ctx.Done():
-				log.Printf("메시지 처리 시간 초과: %s", clientID)
+				sugar.Infof("메시지 처리 시간 초과: %s", clientID)
 				s.sendErrorResponse(conn, "처리 시간 초과")
 			case <-done:
 			}
