@@ -2,28 +2,22 @@ package repository
 
 import (
 	"database/sql"
-	"fmt"
-	config "system-collector/configs"
 	"system-collector/pkg/models"
 )
 
 type CommandRepository struct {
-	db        *sql.DB
-	tableName string
+	db *sql.DB
 }
 
 func NewCommandRepository(db *sql.DB) *CommandRepository {
-	cfg := config.Get()
 	return &CommandRepository{
-		db:        db,
-		tableName: cfg.Postgres.TableName,
+		db: db,
 	}
 }
 
 // GetCommandsByNodeID 특정 노드의 명령어 조회
 func (r *CommandRepository) GetCommandsByNodeID(nodeID string) ([]models.Command, error) {
-	query := fmt.Sprintf(`SELECT command_id, node_id, command_type, command_status 
-						 FROM %s WHERE node_id = $1`, r.tableName)
+	query := `SELECT command_id, node_id, command_type, command_status FROM commands WHERE node_id = $1`
 	rows, err := r.db.Query(query, nodeID)
 	if err != nil {
 		return nil, err
@@ -48,7 +42,7 @@ func (r *CommandRepository) GetCommandsByNodeID(nodeID string) ([]models.Command
 
 // deleteCommandsByNodeID 특정 노드의 모든 명령어 삭제
 func (r *CommandRepository) DeleteCommandsByNodeID(nodeID string) error {
-	query := fmt.Sprintf(`DELETE FROM %s WHERE node_id = $1`, r.tableName)
+	query := `DELETE FROM commands WHERE node_id = $1`
 	_, err := r.db.Exec(query, nodeID)
 	return err
 }

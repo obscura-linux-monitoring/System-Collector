@@ -33,6 +33,7 @@ func main() {
 
 	// 커맨드 저장소 초기화
 	cmdRepo := repository.NewCommandRepository(pgClient.GetDB())
+	userRepo := repository.NewUserRepository(pgClient.GetDB())
 
 	// 버퍼가 있는 채널 생성
 	metricsChan := make(chan *models.SystemMetrics, 1000)
@@ -52,7 +53,7 @@ func main() {
 	wsServer := websocket.NewServer(func(m *models.SystemMetrics) error {
 		metricsChan <- m
 		return nil
-	}, cmdRepo)
+	}, cmdRepo, userRepo)
 
 	// WebSocket 서버 시작
 	wsServer.Start()

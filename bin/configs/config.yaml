@@ -18,4 +18,3 @@ postgres:
   password: hoseo
   dbname: obscura
   sslmode: disable
-  table_name: commands

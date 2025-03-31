@@ -20,11 +20,12 @@ type Server struct {
 	upgrader   websocket.Upgrader
 	store      func(*models.SystemMetrics) error
 	cmdRepo    *repository.CommandRepository
+	userRepo   *repository.UserRepository
 	clients    sync.Map
 	maxClients int
 }
 
-func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository) *Server {
+func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository, userRepo *repository.UserRepository) *Server {
 	return &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin:     func(r *http.Request) bool { return true },
@@ -33,6 +34,7 @@ func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.Comm
 		},
 		store:      store,
 		cmdRepo:    cmdRepo,
+		userRepo:   userRepo,
 		maxClients: 1000,
 	}
 }
@@ -53,6 +55,12 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 	var metrics models.SystemMetrics
 	if err := json.Unmarshal(message, &metrics); err != nil {
 		s.sendErrorResponse(conn, "메시지 파싱 오류")
+		return
+	}
+
+	exists, err := s.userRepo.ExistsUserByObscuraKey(metrics.USER_ID)
+	if err != nil || !exists {
+		s.sendErrorResponse(conn, "사용자 조회 실패")
 		return
 	}
 
