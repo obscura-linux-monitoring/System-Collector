@@ -42,5 +42,8 @@ jobs:
         prerelease: false
         files: |
           bin/server.exec
+          install/install.sh
+          install/uninstall.sh
+          install/system-collector.service
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
