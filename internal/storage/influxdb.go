@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
-	"time"
 
 	config "system-collector/configs"
 	"system-collector/pkg/models"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	api "github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 type InfluxDBClient struct {
@@ -19,21 +18,20 @@ type InfluxDBClient struct {
 	writeAPI api.WriteAPI
 	org      string
 	bucket   string
+	// mutex    sync.Mutex
 }
 
 func NewInfluxDBClient() (*InfluxDBClient, error) {
-	// 설정에서 로드
 	cfg := config.Get()
 
-	// 클라이언트 옵션 설정
 	options := influxdb2.DefaultOptions()
 	options.SetBatchSize(500)
 	options.SetFlushInterval(1000)
 	options.SetUseGZip(true)
-	options.SetHTTPRequestTimeout(30000)
-	options.SetRetryInterval(5000)
-	options.SetMaxRetries(5)
-	options.SetLogLevel(1)
+	options.SetHTTPRequestTimeout(5000)
+	options.SetRetryInterval(1000)
+	options.SetMaxRetries(3)
+	options.SetLogLevel(0) // 로깅 레벨 낮춤
 
 	client := influxdb2.NewClientWithOptions(cfg.InfluxDB.URL, cfg.InfluxDB.Token, options)
 
@@ -43,14 +41,14 @@ func NewInfluxDBClient() (*InfluxDBClient, error) {
 		return nil, err
 	}
 
-	// 단일 WriteAPI 인스턴스 생성
+	// 비동기 쓰기 API 사용
 	writeAPI := client.WriteAPI(cfg.InfluxDB.Org, cfg.InfluxDB.Bucket)
 
 	// 에러 처리
 	errorsCh := writeAPI.Errors()
 	go func() {
 		for err := range errorsCh {
-			log.Printf("InfluxDB write error: %s", err.Error())
+			log.Printf("InfluxDB 쓰기 오류: %v", err)
 		}
 	}()
 
@@ -62,33 +60,28 @@ func NewInfluxDBClient() (*InfluxDBClient, error) {
 	}, nil
 }
 
-func (i *InfluxDBClient) WriteMetrics(measurement string, tags map[string]string, fields map[string]interface{}) error {
-	p := influxdb2.NewPoint(
-		measurement,
-		tags,
-		fields,
-		time.Now(),
-	)
-
-	// 저장된 단일 WriteAPI 사용
-	i.writeAPI.WritePoint(p)
-
-	return nil
+func (i *InfluxDBClient) WritePoints(points []*write.Point) {
+	for _, p := range points {
+		i.writeAPI.WritePoint(p)
+	}
 }
 
 func (i *InfluxDBClient) Close() {
+	// 닫기 전에 남은 데이터 플러시
+	i.writeAPI.Flush()
 	i.client.Close()
 }
 
 func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
-	start := time.Now()
+	points := make([]*write.Point, 0, 100) // 예상 포인트 수로 초기화
 
-	tags := map[string]string{
+	// 시스템 기본 태그
+	baseTags := map[string]string{
 		"key":      metrics.Key,
 		"hostname": metrics.System.Hostname,
 	}
 
-	// CPU 메트릭스 저장
+	// 1. CPU 메트릭스
 	cpuFields := map[string]interface{}{
 		"architecture":        metrics.CPU.Architecture,
 		"model":               metrics.CPU.Model,
@@ -103,21 +96,22 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		"has_svm":             metrics.CPU.HasSVM,
 		"has_avx":             metrics.CPU.HasAVX,
 		"has_avx2":            metrics.CPU.HasAVX2,
+		"has_neon":            metrics.CPU.HasNEON,
+		"has_sve":             metrics.CPU.HasSVE,
 		"is_hyperthreading":   metrics.CPU.IsHyperthreading,
 	}
 
-	// CPU 코어별 정보 저장
+	// CPU 코어별 정보 추가
 	for _, core := range metrics.CPU.Cores {
 		cpuFields[fmt.Sprintf("core_%d_usage", core.ID)] = core.Usage
 		cpuFields[fmt.Sprintf("core_%d_temperature", core.ID)] = core.Temperature
 	}
 
-	if err := i.WriteMetrics("cpu", tags, cpuFields); err != nil {
-		return err
-	}
+	cpuPoint := influxdb2.NewPoint("cpu", baseTags, cpuFields, metrics.Timestamp)
+	points = append(points, cpuPoint)
 
-	// 메모리 메트릭스 저장
-	memoryFields := map[string]interface{}{
+	// 2. 메모리 메트릭스
+	memFields := map[string]interface{}{
 		"total":         metrics.Memory.Total,
 		"used":          metrics.Memory.Used,
 		"free":          metrics.Memory.Free,
@@ -129,11 +123,10 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		"swap_free":     metrics.Memory.SwapFree,
 		"usage_percent": metrics.Memory.UsagePercent,
 	}
-	if err := i.WriteMetrics("memory", tags, memoryFields); err != nil {
-		return err
-	}
+	memPoint := influxdb2.NewPoint("memory", baseTags, memFields, metrics.Timestamp)
+	points = append(points, memPoint)
 
-	// 디스크 메트릭스 저장
+	// 3. 디스크 메트릭스
 	for _, disk := range metrics.Disk {
 		diskTags := map[string]string{
 			"key":             metrics.Key,
@@ -146,68 +139,77 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 			"total":         disk.Total,
 			"used":          disk.Used,
 			"free":          disk.Free,
+			"usage_percent": disk.UsagePercent,
 			"inodes_total":  disk.InodesTotal,
 			"inodes_used":   disk.InodesUsed,
 			"inodes_free":   disk.InodesFree,
-			"usage_percent": disk.UsagePercent,
 			"error_flag":    disk.ErrorFlag,
-			// IO 통계
-			"io_read_bytes":     disk.IOStats.ReadBytes,
-			"io_write_bytes":    disk.IOStats.WriteBytes,
-			"io_reads":          disk.IOStats.Reads,
-			"io_writes":         disk.IOStats.Writes,
-			"io_reads_per_sec":  disk.IOStats.ReadsPerSec,
-			"io_writes_per_sec": disk.IOStats.WritesPerSec,
-			"io_in_progress":    disk.IOStats.IOInProgress,
-			"io_time":           disk.IOStats.IOTime,
+			"error_message": disk.ErrorMessage,
 		}
 
-		if err := i.WriteMetrics("disk", diskTags, diskFields); err != nil {
-			return err
-		}
+		// IO 통계 추가
+		diskFields["read_bytes"] = disk.IOStats.ReadBytes
+		diskFields["write_bytes"] = disk.IOStats.WriteBytes
+		diskFields["reads"] = disk.IOStats.Reads
+		diskFields["writes"] = disk.IOStats.Writes
+		diskFields["read_bytes_per_sec"] = disk.IOStats.ReadBytesPerSec
+		diskFields["write_bytes_per_sec"] = disk.IOStats.WriteBytesPerSec
+		diskFields["reads_per_sec"] = disk.IOStats.ReadsPerSec
+		diskFields["writes_per_sec"] = disk.IOStats.WritesPerSec
+		diskFields["io_in_progress"] = disk.IOStats.IOInProgress
+		diskFields["io_time"] = disk.IOStats.IOTime
+		diskFields["read_time"] = disk.IOStats.ReadTime
+		diskFields["write_time"] = disk.IOStats.WriteTime
+		diskFields["error_flag"] = disk.IOStats.ErrorFlag
+
+		diskPoint := influxdb2.NewPoint("disk", diskTags, diskFields, metrics.Timestamp)
+		points = append(points, diskPoint)
 	}
 
-	// 네트워크 메트릭스 저장
+	// 4. 네트워크 메트릭스
 	for _, network := range metrics.Network {
-		networkTags := map[string]string{
+		netTags := map[string]string{
 			"key":       metrics.Key,
 			"interface": network.Interface,
-			"ip":        network.IP,
 			"mac":       network.MAC,
 		}
 
-		networkFields := map[string]interface{}{
-			"mtu":              network.MTU,
-			"speed":            network.Speed,
-			"status":           network.Status,
-			"rx_bytes":         network.RxBytes,
-			"tx_bytes":         network.TxBytes,
-			"rx_packets":       network.RxPackets,
-			"tx_packets":       network.TxPackets,
-			"rx_errors":        network.RxErrors,
-			"tx_errors":        network.TxErrors,
-			"rx_dropped":       network.RxDropped,
-			"tx_dropped":       network.TxDropped,
-			"rx_bytes_per_sec": network.RxBytesPerSec,
-			"tx_bytes_per_sec": network.TxBytesPerSec,
+		netFields := map[string]interface{}{
+			"ip":           network.IP,
+			"mtu":          network.MTU,
+			"speed":        network.Speed,
+			"status":       network.Status,
+			"rx_bytes":     network.RxBytes,
+			"tx_bytes":     network.TxBytes,
+			"rx_packets":   network.RxPackets,
+			"tx_packets":   network.TxPackets,
+			"rx_errors":    network.RxErrors,
+			"tx_errors":    network.TxErrors,
+			"rx_dropped":   network.RxDropped,
+			"tx_dropped":   network.TxDropped,
+			"rx_bytes_sec": network.RxBytesPerSec,
+			"tx_bytes_sec": network.TxBytesPerSec,
 		}
 
-		if err := i.WriteMetrics("network", networkTags, networkFields); err != nil {
-			return err
-		}
+		netPoint := influxdb2.NewPoint("network", netTags, netFields, metrics.Timestamp)
+		points = append(points, netPoint)
 	}
 
-	// 프로세스 메트릭스 저장
-	for _, process := range metrics.Processes {
-		processTags := map[string]string{
+	// 5. 프로세스 메트릭스 (상위 10개만)
+	for idx, process := range metrics.Processes {
+		if idx >= 10 {
+			break // 상위 10개만 저장
+		}
+
+		procTags := map[string]string{
 			"key":     metrics.Key,
-			"pid":     strconv.Itoa(process.PID),
+			"pid":     fmt.Sprintf("%d", process.PID),
 			"name":    process.Name,
 			"user":    process.User,
 			"command": process.Command,
 		}
 
-		processFields := map[string]interface{}{
+		procFields := map[string]interface{}{
 			"ppid":           process.PPID,
 			"status":         process.Status,
 			"cpu_time":       process.CPUTime,
@@ -222,44 +224,56 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 			"io_write_bytes": process.IOWriteBytes,
 		}
 
-		if err := i.WriteMetrics("process", processTags, processFields); err != nil {
-			return err
-		}
+		procPoint := influxdb2.NewPoint("process", procTags, procFields, metrics.Timestamp)
+		points = append(points, procPoint)
 	}
 
-	// 도커 컨테이너 메트릭스 저장
+	// 6. 컨테이너 메트릭스
 	for _, container := range metrics.Containers {
 		containerTags := map[string]string{
-			"key":            metrics.Key,
-			"container_id":   container.ID,
-			"container_name": container.Name,
-			"image":          container.Image,
+			"key":   metrics.Key,
+			"id":    container.ID,
+			"name":  container.Name,
+			"image": container.Image,
 		}
 
 		containerFields := map[string]interface{}{
-			"status":         container.Status,
-			"created":        container.Created,
-			"cpu_usage":      container.CPUUsage,
-			"memory_usage":   container.MemoryUsage,
-			"memory_limit":   container.MemoryLimit,
-			"memory_percent": container.MemoryPercent,
-			"network_rx":     container.NetworkRxBytes,
-			"network_tx":     container.NetworkTxBytes,
-			"block_read":     container.BlockRead,
-			"block_write":    container.BlockWrite,
-			"pids":           container.PIDs,
-			"restarts":       container.Restarts,
+			"status":           container.Status,
+			"created":          container.Created,
+			"cpu_usage":        container.CPUUsage,
+			"memory_usage":     container.MemoryUsage,
+			"memory_limit":     container.MemoryLimit,
+			"memory_percent":   container.MemoryPercent,
+			"network_rx_bytes": container.NetworkRxBytes,
+			"network_tx_bytes": container.NetworkTxBytes,
+			"block_read":       container.BlockRead,
+			"block_write":      container.BlockWrite,
+			"pids":             container.PIDs,
+			"restarts":         container.Restarts,
 		}
 
-		if err := i.WriteMetrics("docker", containerTags, containerFields); err != nil {
-			return err
-		}
+		containerPoint := influxdb2.NewPoint("container", containerTags, containerFields, metrics.Timestamp)
+		points = append(points, containerPoint)
 	}
 
-	i.writeAPI.Flush()
+	// 7. 서비스 메트릭스
+	for _, service := range metrics.Services {
+		serviceTags := map[string]string{
+			"key":  metrics.Key,
+			"name": service.Name,
+		}
 
-	elapsed := time.Since(start)
-	log.Printf("InfluxDB 저장 완료: %v ms 소요 (메트릭 키: %s)", elapsed.Milliseconds(), metrics.Key)
+		serviceFields := map[string]interface{}{
+			"status":     service.Status,
+			"is_running": service.IsRunning,
+		}
+
+		servicePoint := influxdb2.NewPoint("service", serviceTags, serviceFields, metrics.Timestamp)
+		points = append(points, servicePoint)
+	}
+
+	// 모든 포인트를 한 번에 전송
+	i.WritePoints(points)
 
 	return nil
 }

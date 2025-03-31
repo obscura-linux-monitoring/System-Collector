@@ -41,6 +41,7 @@ mkdir -p $BIN_DIR $CONFIG_DIR
 echo "파일 복사 중..."
 cp -f ../bin/server.exec $BIN_DIR/
 cp -f ../bin/configs/config.yaml $CONFIG_DIR/
+cp -f uninstall.sh $INSTALL_DIR/
 
 # 서비스 파일 복사
 echo "서비스 파일 설치 중..."

@@ -10,3 +10,12 @@ influxdb:
   
 collector:
   interval: 1 # 수집 간격(초)
+
+postgres:
+  host: localhost
+  port: 5432
+  user: obscura
+  password: hoseo
+  dbname: obscura
+  sslmode: disable
+  table_name: commands_dev
