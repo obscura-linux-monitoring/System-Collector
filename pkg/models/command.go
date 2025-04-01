@@ -5,4 +5,5 @@ type Command struct {
 	NodeID        string `db:"node_id"`
 	CommandType   string `db:"command_type"`
 	CommandStatus int16  `db:"command_status"`
+	Target        string `db:"target"`
 }
