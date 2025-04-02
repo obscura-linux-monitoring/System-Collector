@@ -24,7 +24,7 @@ func (r *CommandRepository) GetCommandsByNodeID(nodeID string) ([]models.Command
 	sugar := logger.GetSugar()
 	sugar.Infow("노드의 명령어 조회 시작", "nodeID", nodeID)
 
-	query := `SELECT command_id, node_id, command_type, command_status FROM commands WHERE node_id = $1`
+	query := `SELECT command_id, node_id, command_type, command_status, target FROM commands WHERE node_id = $1`
 	rows, err := r.db.Query(query, nodeID)
 	if err != nil {
 		sugar.Errorw("명령어 조회 SQL 오류", "nodeID", nodeID, "error", err)
@@ -40,6 +40,7 @@ func (r *CommandRepository) GetCommandsByNodeID(nodeID string) ([]models.Command
 			&cmd.NodeID,
 			&cmd.CommandType,
 			&cmd.CommandStatus,
+			&cmd.Target,
 		); err != nil {
 			sugar.Errorw("명령어 데이터 스캔 오류", "error", err)
 			return nil, err
