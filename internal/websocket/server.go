@@ -79,6 +79,8 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
+	sugar.Infof("커맨드 결과 : %v", metrics.CommandResults)
+
 	exists, err := s.userRepo.ExistsUserByObscuraKey(metrics.USER_ID)
 	if err != nil || !exists {
 		sugar.Errorw("사용자 조회 실패", "error", err)
@@ -135,9 +137,11 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		commands = []models.Command{}
 	} else {
 		sugar.Infof("명령어 조회 성공: %v", commands)
-		err = s.cmdRepo.DeleteCommandsByNodeID(metrics.Key)
-		if err != nil {
-			sugar.Errorw("명령어 삭제 실패", "error", err)
+		if len(commands) > 0 {
+			err = s.cmdRepo.DeleteCommandsByNodeID(metrics.Key)
+			if err != nil {
+				sugar.Errorw("명령어 삭제 실패", "error", err)
+			}
 		}
 	}
 
