@@ -22,8 +22,8 @@ type InfluxDBClient struct {
 }
 
 func NewInfluxDBClient() (*InfluxDBClient, error) {
-	sugar := logger.GetSugar()
-	sugar.Info("InfluxDBClient 초기화 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("InfluxDBClient 초기화 중")
 
 	cfg := config.Get()
 
@@ -65,30 +65,30 @@ func NewInfluxDBClient() (*InfluxDBClient, error) {
 }
 
 func (i *InfluxDBClient) WritePoints(points []*write.Point) {
-	sugar := logger.GetSugar()
-	sugar.Info("InfluxDBClient 쓰기 시작")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("InfluxDBClient 쓰기 시작")
 
 	for _, p := range points {
 		i.writeAPI.WritePoint(p)
 	}
 
-	sugar.Info("InfluxDBClient 쓰기 완료")
+	sugar.Infow("InfluxDBClient 쓰기 완료")
 }
 
 func (i *InfluxDBClient) Close() {
-	sugar := logger.GetSugar()
-	sugar.Info("InfluxDBClient 종료 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("InfluxDBClient 종료 중")
 
 	// 닫기 전에 남은 데이터 플러시
 	i.writeAPI.Flush()
 	i.client.Close()
 
-	sugar.Info("InfluxDBClient 종료 완료")
+	sugar.Infow("InfluxDBClient 종료 완료")
 }
 
 func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
-	sugar := logger.GetSugar()
-	sugar.Info("InfluxDBClient 메트릭스 저장 시작")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("InfluxDBClient 메트릭스 저장 시작")
 
 	points := make([]*write.Point, 0, 100) // 예상 포인트 수로 초기화
 
@@ -298,6 +298,6 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 	// 모든 포인트를 한 번에 전송
 	i.WritePoints(points)
 
-	sugar.Info("InfluxDBClient 메트릭스 저장 완료")
+	sugar.Infow("InfluxDBClient 메트릭스 저장 완료")
 	return nil
 }

@@ -11,8 +11,8 @@ type NodeRepository struct {
 }
 
 func NewNodeRepository(db *sql.DB) *NodeRepository {
-	sugar := logger.GetSugar()
-	sugar.Info("NodeRepository 초기화 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("NodeRepository 초기화 중")
 
 	return &NodeRepository{
 		db: db,
@@ -20,7 +20,7 @@ func NewNodeRepository(db *sql.DB) *NodeRepository {
 }
 
 func (r *NodeRepository) CreateNode(node *models.Node) error {
-	sugar := logger.GetSugar()
+	sugar := logger.GetCustomLogger()
 	sugar.Infow("노드 생성 시작", "node", node)
 
 	query := `INSERT INTO nodes (node_id, obscura_key, server_type) VALUES ($1, $2, $3)`
@@ -33,7 +33,7 @@ func (r *NodeRepository) CreateNode(node *models.Node) error {
 }
 
 func (r *NodeRepository) GetAllNodes() ([]*models.Node, error) {
-	sugar := logger.GetSugar()
+	sugar := logger.GetCustomLogger()
 	sugar.Infow("모든 노드 조회 시작")
 
 	query := `SELECT node_id, obscura_key, server_type FROM nodes`

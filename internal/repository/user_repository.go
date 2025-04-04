@@ -10,8 +10,8 @@ type UserRepository struct {
 }
 
 func NewUserRepository(db *sql.DB) *UserRepository {
-	sugar := logger.GetSugar()
-	sugar.Info("UserRepository 초기화 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("UserRepository 초기화 중")
 
 	return &UserRepository{
 		db: db,
@@ -19,7 +19,7 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 }
 
 func (r *UserRepository) ExistsUserByObscuraKey(ObscuraKey string) (bool, error) {
-	sugar := logger.GetSugar()
+	sugar := logger.GetCustomLogger()
 	sugar.Infow("사용자 존재 여부 확인 시작", "ObscuraKey", ObscuraKey)
 
 	query := `SELECT EXISTS(SELECT 1 FROM users WHERE obscura_key = $1)`

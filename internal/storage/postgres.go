@@ -14,8 +14,8 @@ type PostgresClient struct {
 }
 
 func NewPostgresClient() (*PostgresClient, error) {
-	sugar := logger.GetSugar()
-	sugar.Info("PostgresClient 초기화 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("PostgresClient 초기화 중")
 
 	cfg := config.Get()
 
@@ -40,13 +40,13 @@ func NewPostgresClient() (*PostgresClient, error) {
 		return nil, fmt.Errorf("postgres 연결 테스트 실패: %v", err)
 	}
 
-	sugar.Info("postgres 연결 성공")
+	sugar.Infow("postgres 연결 성공")
 	return &PostgresClient{db: db}, nil
 }
 
 func (p *PostgresClient) Close() error {
-	sugar := logger.GetSugar()
-	sugar.Info("postgres 연결 종료 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("postgres 연결 종료 중")
 
 	err := p.db.Close()
 	if err != nil {
@@ -54,13 +54,13 @@ func (p *PostgresClient) Close() error {
 		return fmt.Errorf("postgres 연결 종료 실패: %v", err)
 	}
 
-	sugar.Info("postgres 연결 종료 완료")
+	sugar.Infow("postgres 연결 종료 완료")
 	return nil
 }
 
 func (p *PostgresClient) GetDB() *sql.DB {
-	sugar := logger.GetSugar()
-	sugar.Info("postgres 데이터베이스 연결 반환")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("postgres 데이터베이스 연결 반환")
 
 	return p.db
 }

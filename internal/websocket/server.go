@@ -28,8 +28,8 @@ type Server struct {
 }
 
 func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository, userRepo *repository.UserRepository, nodeRepo *repository.NodeRepository) *Server {
-	sugar := logger.GetSugar()
-	sugar.Info("Server 초기화 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("Server 초기화 중")
 
 	// 사용자 목록 조회
 	nodes, err := nodeRepo.GetAllNodes()
@@ -54,13 +54,13 @@ func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.Comm
 }
 
 func (s *Server) Start() {
-	sugar := logger.GetSugar()
-	sugar.Info("WebSocket server 시작 중")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("WebSocket server 시작 중")
 
 	http.HandleFunc("/ws", s.handleConnections)
 
 	cfg := config.Get()
-	sugar.Infof("WebSocket server starting on :%d", cfg.Server.Port)
+	sugar.Infow("WebSocket server starting", "port", cfg.Server.Port)
 	err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Server.Port), nil)
 	if err != nil {
 		sugar.Errorf("WebSocket server failed to start: %v", err)
@@ -68,8 +68,8 @@ func (s *Server) Start() {
 }
 
 func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
-	sugar := logger.GetSugar()
-	sugar.Info("handleMessage 시작")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("handleMessage 시작")
 
 	start := time.Now()
 	var metrics models.SystemMetrics
@@ -79,7 +79,7 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
-	sugar.Infof("커맨드 결과 : %v", metrics.CommandResults)
+	sugar.Infof("커맨드 결과 : %v", metrics.CommandResults) // TODO 커맨드 결과 처리
 
 	exists, err := s.userRepo.ExistsUserByObscuraKey(metrics.USER_ID)
 	if err != nil || !exists {
@@ -107,7 +107,7 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		node := models.Node{
 			NodeID:     metrics.Key,
 			ObscuraKey: metrics.USER_ID,
-			ServerType: false, // TODO: 서버 타입 추가
+			ServerType: "debug", // TODO: 서버 타입 추가
 		}
 		err := s.nodeRepo.CreateNode(&node)
 		if err != nil {
@@ -163,8 +163,8 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 }
 
 func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
-	sugar := logger.GetSugar()
-	sugar.Info("sendErrorResponse 시작")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("sendErrorResponse 시작")
 
 	// 쓰기 작업 전에 데드라인 설정
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
@@ -179,7 +179,7 @@ func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
 }
 
 func (s *Server) handleDisconnect(clientID string, code int, text string) {
-	sugar := logger.GetSugar()
+	sugar := logger.GetCustomLogger()
 	sugar.Infof("클라이언트 %s 연결 종료 (코드: %d, 사유: %s)", clientID, code, text)
 	if conn, ok := s.clients.LoadAndDelete(clientID); ok {
 		if websocketConn, ok := conn.(*websocket.Conn); ok {
@@ -189,8 +189,8 @@ func (s *Server) handleDisconnect(clientID string, code int, text string) {
 }
 
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
-	sugar := logger.GetSugar()
-	sugar.Info("handleConnections 시작")
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("handleConnections 시작")
 
 	clientCount := 0
 	s.clients.Range(func(_, _ interface{}) bool {
