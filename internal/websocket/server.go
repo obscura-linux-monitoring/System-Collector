@@ -1,9 +1,11 @@
 package websocket
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -79,7 +81,19 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
-	sugar.Infof("커맨드 결과 : %v", metrics.CommandResults) // TODO 커맨드 결과 처리
+	sugar.Infof("커맨드 결과 : %v", metrics.CommandResults)
+
+	if len(metrics.CommandResults) > 0 {
+		sugar.Infof("커맨드 결과 전송 시작: %d개", len(metrics.CommandResults))
+
+		// 커맨드 결과 JSON 변환
+		commandResultJSON, err := json.Marshal(metrics.CommandResults)
+		if err != nil {
+			sugar.Errorw("커맨드 결과 JSON 변환 실패", "error", err)
+		} else {
+			s.sendCommandResults(commandResultJSON, metrics.Key, metrics.USER_ID)
+		}
+	}
 
 	exists, err := s.userRepo.ExistsUserByObscuraKey(metrics.USER_ID)
 	if err != nil || !exists {
@@ -160,6 +174,43 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 
 	elapsed := time.Since(start)
 	sugar.Infof("응답 전송 완료: %v ms", elapsed.Milliseconds())
+}
+
+// sendCommandResults는 명령어 실행 결과를 REST API로 전송하는 함수입니다
+func (s *Server) sendCommandResults(commandResultJSON []byte, nodeID, userID string) {
+	sugar := logger.GetCustomLogger()
+
+	// HTTP 클라이언트 생성
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	// REST API 요청 생성
+	req, err := http.NewRequest("POST", "http://1.209.148.143:8000/api/command-results", bytes.NewBuffer(commandResultJSON))
+	if err != nil {
+		sugar.Errorw("커맨드 결과 요청 생성 실패", "error", err)
+		return
+	}
+
+	// 요청 헤더 설정
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Node-ID", nodeID)
+	req.Header.Set("X-User-ID", userID)
+
+	// 요청 전송
+	resp, err := client.Do(req)
+	if err != nil {
+		sugar.Errorw("커맨드 결과 전송 실패", "error", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		sugar.Infof("커맨드 결과 전송 성공: %d", resp.StatusCode)
+	} else {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		sugar.Errorw("커맨드 결과 전송 실패", "status", resp.StatusCode, "response", string(bodyBytes))
+	}
 }
 
 func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
