@@ -94,9 +94,9 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 
 	// 시스템 기본 태그
 	baseTags := map[string]string{
-		"key":      metrics.Key,
-		"user_id":  metrics.USER_ID,
-		"hostname": metrics.System.Hostname,
+		"node_id":     metrics.Key,
+		"obscura_key": metrics.USER_ID,
+		"hostname":    metrics.System.Hostname,
 	}
 
 	// 1. CPU 메트릭스
@@ -147,8 +147,8 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 	// 3. 디스크 메트릭스
 	for _, disk := range metrics.Disk {
 		diskTags := map[string]string{
-			"key":             metrics.Key,
-			"user_id":         metrics.USER_ID,
+			"node_id":         metrics.Key,
+			"obscura_key":     metrics.USER_ID,
 			"device":          disk.Device,
 			"mount_point":     disk.MountPoint,
 			"filesystem_type": disk.FilesystemType,
@@ -188,10 +188,10 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 	// 4. 네트워크 메트릭스
 	for _, network := range metrics.Network {
 		netTags := map[string]string{
-			"key":       metrics.Key,
-			"user_id":   metrics.USER_ID,
-			"interface": network.Interface,
-			"mac":       network.MAC,
+			"node_id":     metrics.Key,
+			"obscura_key": metrics.USER_ID,
+			"interface":   network.Interface,
+			"mac":         network.MAC,
 		}
 
 		netFields := map[string]interface{}{
@@ -222,12 +222,12 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		}
 
 		procTags := map[string]string{
-			"key":     metrics.Key,
-			"user_id": metrics.USER_ID,
-			"pid":     fmt.Sprintf("%d", process.PID),
-			"name":    process.Name,
-			"user":    process.User,
-			"command": process.Command,
+			"node_id":     metrics.Key,
+			"obscura_key": metrics.USER_ID,
+			"pid":         fmt.Sprintf("%d", process.PID),
+			"name":        process.Name,
+			"user":        process.User,
+			"command":     process.Command,
 		}
 
 		procFields := map[string]interface{}{
@@ -252,11 +252,11 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 	// 6. 컨테이너 메트릭스
 	for _, container := range metrics.Containers {
 		containerTags := map[string]string{
-			"key":     metrics.Key,
-			"user_id": metrics.USER_ID,
-			"id":      container.ID,
-			"name":    container.Name,
-			"image":   container.Image,
+			"node_id":     metrics.Key,
+			"obscura_key": metrics.USER_ID,
+			"id":          container.ID,
+			"name":        container.Name,
+			"image":       container.Image,
 		}
 
 		containerFields := map[string]interface{}{
@@ -281,12 +281,12 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 	// 7. 서비스 메트릭스
 	for _, service := range metrics.Services {
 		serviceTags := map[string]string{
-			"key":     metrics.Key,
-			"user_id": metrics.USER_ID,
-			"name":    service.Name,
+			"node_id":     metrics.Key,
+			"obscura_key": metrics.USER_ID,
+			"name":        service.Name,
 		}
 
-		serviceFields := map[string]interface{}{
+		serviceFields := map[string]interface{}{ // TODO 나머지 필드 채워야함(값은 있음)
 			"status":     service.Status,
 			"is_running": service.IsRunning,
 		}
