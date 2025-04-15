@@ -49,6 +49,7 @@ func main() {
 	cmdRepo := repository.NewCommandRepository(pgClient.GetDB())
 	userRepo := repository.NewUserRepository(pgClient.GetDB())
 	nodeRepo := repository.NewNodeRepository(pgClient.GetDB())
+	logRepo := repository.NewLogRepository(pgClient.GetDB())
 	// 버퍼가 있는 채널 생성
 	metricsChan := make(chan *models.SystemMetrics, 1000)
 
@@ -67,7 +68,7 @@ func main() {
 	wsServer := websocket.NewServer(func(m *models.SystemMetrics) error {
 		metricsChan <- m
 		return nil
-	}, cmdRepo, userRepo, nodeRepo)
+	}, cmdRepo, userRepo, nodeRepo, logRepo)
 
 	// 시그널 처리를 위한 채널 생성
 	sigChan := make(chan os.Signal, 1)

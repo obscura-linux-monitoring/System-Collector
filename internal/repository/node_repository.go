@@ -29,7 +29,7 @@ func (r *NodeRepository) CreateNode(node *models.Node) error {
 		sugar.Errorw("노드 생성 실패", "error", err)
 		return err
 	}
-	return err
+	return nil
 }
 
 func (r *NodeRepository) GetAllNodes() ([]*models.Node, error) {

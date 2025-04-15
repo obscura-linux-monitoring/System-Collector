@@ -24,12 +24,13 @@ type Server struct {
 	cmdRepo    *repository.CommandRepository
 	userRepo   *repository.UserRepository
 	nodeRepo   *repository.NodeRepository
+	logRepo    *repository.LogRepository
 	nodeList   []*models.Node
 	clients    sync.Map
 	maxClients int
 }
 
-func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository, userRepo *repository.UserRepository, nodeRepo *repository.NodeRepository) *Server {
+func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository, userRepo *repository.UserRepository, nodeRepo *repository.NodeRepository, logRepo *repository.LogRepository) *Server {
 	sugar := logger.GetCustomLogger()
 	sugar.Infow("Server 초기화 중")
 
@@ -50,6 +51,7 @@ func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.Comm
 		cmdRepo:    cmdRepo,
 		userRepo:   userRepo,
 		nodeRepo:   nodeRepo,
+		logRepo:    logRepo,
 		nodeList:   nodes, // 조회한 사용자 목록 설정
 		maxClients: 1000,
 	}
@@ -59,7 +61,11 @@ func (s *Server) Start() {
 	sugar := logger.GetCustomLogger()
 	sugar.Infow("WebSocket server 시작 중")
 
+	// 기존 메트릭스 웹소켓 핸들러
 	http.HandleFunc("/ws", s.handleConnections)
+
+	// 로그 수집용 새로운 웹소켓 핸들러
+	http.HandleFunc("/ws/logs", s.handleLogConnections)
 
 	cfg := config.Get()
 	sugar.Infow("WebSocket server starting", "port", cfg.Server.Port)
@@ -328,4 +334,57 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
+}
+
+func (s *Server) handleLogConnections(w http.ResponseWriter, r *http.Request) {
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("로그 웹소켓 연결 시작")
+
+	conn, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		sugar.Errorw("로그 연결 업그레이드 실패", "error", err)
+		return
+	}
+	defer conn.Close()
+
+	// 핑퐁 및 데드라인 설정 코드 추가...
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				sugar.Errorw("로그 연결 끊김", "error", err)
+			}
+			break
+		}
+
+		// 클라이언트 로그 구조에 맞는 파싱
+		var payload struct {
+			Logs []models.LogMessage `json:"logs"`
+		}
+
+		if err := json.Unmarshal(message, &payload); err != nil {
+			sugar.Errorw("로그 메시지 파싱 오류", "error", err)
+			s.sendErrorResponse(conn, "로그 메시지 파싱 오류")
+			continue
+		}
+
+		if len(payload.Logs) == 0 {
+			continue
+		}
+
+		sugar.Infof("%d개의 로그 메시지 수신됨", len(payload.Logs))
+
+		// 로그 저장 처리
+		go func(logs []models.LogMessage) {
+			s.storeLogs(logs)
+		}(payload.Logs)
+	}
+}
+
+func (s *Server) storeLogs(logs []models.LogMessage) error {
+	// 여기서 로그 배열을 한 번에 DB에 저장
+	sugar := logger.GetCustomLogger()
+	sugar.Infof("%d개의 로그 저장 시작", len(logs))
+	return s.logRepo.SaveLogs(logs)
 }
