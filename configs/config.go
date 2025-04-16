@@ -45,6 +45,15 @@ func Load(filename string) error {
 		return err
 	}
 
+	// 환경 변수로 설정 오버라이드
+	if dbHost := os.Getenv("DB_HOST"); dbHost != "" {
+		cfg.Postgres.Host = dbHost
+	}
+
+	if influxURL := os.Getenv("INFLUXDB_URL"); influxURL != "" {
+		cfg.InfluxDB.URL = influxURL
+	}
+
 	return nil
 }
 
