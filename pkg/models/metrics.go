@@ -351,8 +351,20 @@ type ServiceInfo struct {
 	Name string `json:"name"`
 	// Status는 서비스의 현재 상태를 나타냅니다
 	Status string `json:"status"`
-	// IsRunning은 서비스 실행 여부를 나타냅니다
-	IsRunning bool `json:"is_running"`
+	// Enabled는 서비스 활성화 여부를 나타냅니다
+	Enabled bool `json:"enabled"`
+	// Type은 서비스 유형을 나타냅니다
+	Type string `json:"type"`
+	// LoadState는 서비스 로드 상태를 나타냅니다
+	LoadState string `json:"load_state"`
+	// ActiveState는 서비스 활성화 상태를 나타냅니다
+	ActiveState string `json:"active_state"`
+	// SubState는 서비스 부가 상태를 나타냅니다
+	SubState string `json:"sub_state"`
+	// MemoryUsage는 서비스 메모리 사용량을 나타냅니다
+	MemoryUsage uint64 `json:"memory_usage"`
+	// CpuUsage는 cpu 사용량을 나타냅니다
+	CpuUsage float64 `json:"cpu_usage"`
 }
 
 // ToJSON은 주어진 인터페이스를 JSON 바이트 배열로 변환합니다.

@@ -286,9 +286,13 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 			"name":        service.Name,
 		}
 
-		serviceFields := map[string]interface{}{ // TODO 나머지 필드 채워야함(값은 있음)
-			"status":     service.Status,
-			"is_running": service.IsRunning,
+		serviceFields := map[string]interface{}{
+			"status":       service.Status,
+			"enabled":      service.Enabled,
+			"type":         service.Type,
+			"load_state":   service.LoadState,
+			"active_state": service.ActiveState,
+			"sub_state":    service.SubState,
 		}
 
 		servicePoint := influxdb2.NewPoint("service", serviceTags, serviceFields, metrics.Timestamp)
