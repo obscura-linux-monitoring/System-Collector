@@ -87,6 +87,9 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
+	sugar.Infof("metrics.process.size(): %d\n", len(metrics.Processes))
+	sugar.Infof("metrics.process: \n %v\n", metrics.Processes)
+
 	sugar.Infof("커맨드 결과 : %v", metrics.CommandResults)
 
 	if len(metrics.CommandResults) > 0 {

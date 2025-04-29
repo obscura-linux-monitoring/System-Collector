@@ -215,11 +215,8 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		points = append(points, netPoint)
 	}
 
-	// 5. 프로세스 메트릭스 (상위 10개만)
-	for idx, process := range metrics.Processes {
-		if idx >= 10 {
-			break // 상위 10개만 저장
-		}
+	// 5. 프로세스 메트릭스
+	for _, process := range metrics.Processes {
 
 		procTags := map[string]string{
 			"node_id":     metrics.Key,
