@@ -58,3 +58,16 @@ func (r *NodeRepository) GetAllNodes() ([]*models.Node, error) {
 	sugar.Infow("모든 노드 조회 완료", "nodeCount", len(nodes))
 	return nodes, nil
 }
+
+func (r *NodeRepository) UpdateNodeStatus(nodeID string, status int) error {
+	sugar := logger.GetCustomLogger()
+	sugar.Infof("노드 상태 업데이트: %s, %d", nodeID, status)
+
+	query := `UPDATE nodes SET status = $1 WHERE node_id = $2`
+	_, err := r.db.Exec(query, status, nodeID)
+	if err != nil {
+		sugar.Errorw("노드 상태 업데이트 실패", "error", err)
+		return err
+	}
+	return nil
+}

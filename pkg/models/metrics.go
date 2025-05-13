@@ -86,6 +86,18 @@ type CPUMetrics struct {
 	HasSVE bool `json:"has_sve"`
 	// IsHyperthreading은 하이퍼스레딩 지원 여부를 나타냅니다
 	IsHyperthreading bool `json:"is_hyperthreading"`
+	// L1 cache size
+	L1CacheSize int `json:"l1_cache_size"`
+	// L2 cache size
+	L2CacheSize int `json:"l2_cache_size"`
+	// L3 cache size
+	L3CacheSize int `json:"l3_cache_size"`
+	// base clock speed
+	BaseClockSpeed float64 `json:"base_clock_speed"`
+	// max clock speed
+	MaxClockSpeed float64 `json:"max_clock_speed"`
+	// min clock speed
+	MinClockSpeed float64 `json:"min_clock_speed"`
 	// Cores는 코어별 상세 정보를 나타냅니다
 	Cores []CPUCore `json:"cores"`
 }

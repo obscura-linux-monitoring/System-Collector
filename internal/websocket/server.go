@@ -26,8 +26,14 @@ type Server struct {
 	nodeRepo   *repository.NodeRepository
 	logRepo    *repository.LogRepository
 	nodeList   []*models.Node
-	clients    sync.Map
+	clients    sync.Map // clientID -> *ClientInfo
 	maxClients int
+}
+
+// 클라이언트 정보를 저장할 구조체 추가
+type ClientInfo struct {
+	conn   *websocket.Conn
+	nodeID string // metrics.Key 저장용
 }
 
 func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.CommandRepository, userRepo *repository.UserRepository, nodeRepo *repository.NodeRepository, logRepo *repository.LogRepository) *Server {
@@ -75,7 +81,7 @@ func (s *Server) Start() {
 	}
 }
 
-func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
+func (s *Server) handleMessage(conn *websocket.Conn, message []byte, clientID string) {
 	sugar := logger.GetCustomLogger()
 	sugar.Infow("handleMessage 시작")
 
@@ -86,11 +92,6 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 		s.sendErrorResponse(conn, "메시지 파싱 오류")
 		return
 	}
-
-	sugar.Infof("metrics.process.size(): %d\n", len(metrics.Processes))
-	sugar.Infof("metrics.process: \n %v\n", metrics.Processes)
-
-	sugar.Infof("커맨드 결과 : %v", metrics.CommandResults)
 
 	if len(metrics.CommandResults) > 0 {
 		sugar.Infof("커맨드 결과 전송 시작: %d개", len(metrics.CommandResults))
@@ -183,6 +184,20 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte) {
 
 	elapsed := time.Since(start)
 	sugar.Infof("응답 전송 완료: %v ms", elapsed.Milliseconds())
+
+	// 메트릭스 파싱 후 nodeID 저장
+	if value, ok := s.clients.Load(clientID); ok {
+		if clientInfo, ok := value.(*ClientInfo); ok {
+			clientInfo.nodeID = metrics.Key
+			s.clients.Store(clientID, clientInfo)
+
+			// 처음 노드 ID가 설정될 때 연결 상태 전송
+			if clientInfo.nodeID != "" {
+				s.sendNodeStatus(clientInfo.nodeID, 1) // 1은 연결됨
+				s.updateNodeStatus(clientInfo.nodeID, 1)
+			}
+		}
+	}
 }
 
 // sendCommandResults는 명령어 실행 결과를 REST API로 전송하는 함수입니다
@@ -241,10 +256,18 @@ func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
 func (s *Server) handleDisconnect(clientID string, code int, text string) {
 	sugar := logger.GetCustomLogger()
 	sugar.Infof("클라이언트 %s 연결 종료 (코드: %d, 사유: %s)", clientID, code, text)
-	if conn, ok := s.clients.LoadAndDelete(clientID); ok {
-		if websocketConn, ok := conn.(*websocket.Conn); ok {
-			websocketConn.Close()
+
+	// 클라이언트 정보와 nodeID 조회
+	if value, ok := s.clients.Load(clientID); ok {
+		if clientInfo, ok := value.(*ClientInfo); ok {
+			// nodeID가 있으면 상태 전송
+			if clientInfo.nodeID != "" {
+				s.sendNodeStatus(clientInfo.nodeID, 0) // 0은 연결 끊김
+				s.updateNodeStatus(clientInfo.nodeID, 0)
+			}
+			clientInfo.conn.Close()
 		}
+		s.clients.Delete(clientID)
 	}
 }
 
@@ -278,7 +301,11 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	})
 
 	clientID := r.RemoteAddr
-	s.clients.Store(clientID, conn)
+	clientInfo := &ClientInfo{
+		conn:   conn,
+		nodeID: "", // 처음에는 빈 문자열로 초기화
+	}
+	s.clients.Store(clientID, clientInfo)
 	defer func() {
 		s.clients.Delete(clientID)
 		conn.Close()
@@ -299,6 +326,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	sugar.Infof("새로운 클라이언트 연결: %s", clientID)
+	// TODO Web 서버로 Node가 접속했음을 알리는 요청 보내기
 
 	for {
 		messageType, message, err := conn.ReadMessage()
@@ -308,11 +336,6 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 			}
 			break
 		}
-
-		// if len(message) > 1024*1024 {
-		// 	s.sendErrorResponse(conn, "메시지가 너무 큽니다")
-		// 	continue
-		// }
 
 		if messageType != websocket.TextMessage {
 			s.sendErrorResponse(conn, "잘못된 메시지 타입")
@@ -325,7 +348,7 @@ func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 			done := make(chan struct{})
 			go func() {
-				s.handleMessage(conn, message)
+				s.handleMessage(conn, message, clientID) // clientID 전달
 				close(done)
 			}()
 
@@ -349,8 +372,6 @@ func (s *Server) handleLogConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-
-	// 핑퐁 및 데드라인 설정 코드 추가...
 
 	for {
 		_, message, err := conn.ReadMessage()
@@ -390,4 +411,65 @@ func (s *Server) storeLogs(logs []models.LogMessage) error {
 	sugar := logger.GetCustomLogger()
 	sugar.Infof("%d개의 로그 저장 시작", len(logs))
 	return s.logRepo.SaveLogs(logs)
+}
+
+func (s *Server) sendNodeStatus(nodeID string, status int) {
+	sugar := logger.GetCustomLogger()
+	sugar.Infof("노드 상태 전송: %s, %d", nodeID, status)
+
+	// HTTP 클라이언트 생성
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	// 요청 데이터 생성
+	data := map[string]interface{}{
+		"node_id": nodeID,
+		"status":  status,
+	}
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		sugar.Errorw("노드 상태 JSON 변환 실패", "error", err)
+		return
+	}
+
+	sugar.Infof("노드 상태 JSON: %s", string(jsonData))
+
+	// REST API 요청 생성
+	url := config.Get().WebServer.URL + "/api/node-status"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		sugar.Errorw("노드 상태 요청 생성 실패", "error", err)
+		return
+	}
+
+	// 요청 헤더 설정
+	req.Header.Set("Content-Type", "application/json")
+
+	// 요청 전송
+	resp, err := client.Do(req)
+	if err != nil {
+		sugar.Errorw("노드 상태 전송 실패", "error", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		sugar.Infof("노드 상태 전송 성공: %d", resp.StatusCode)
+	} else {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		sugar.Errorw("노드 상태 전송 실패", "status", resp.StatusCode, "response", string(bodyBytes))
+	}
+}
+
+func (s *Server) updateNodeStatus(nodeID string, status int) {
+	sugar := logger.GetCustomLogger()
+	sugar.Infof("노드 상태 업데이트: %s, %d", nodeID, status)
+
+	err := s.nodeRepo.UpdateNodeStatus(nodeID, status)
+	if err != nil {
+		sugar.Errorw("노드 상태 업데이트 실패", "error", err)
+	}
+
+	sugar.Infof("노드 상태 업데이트 성공: %s, %d", nodeID, status)
 }

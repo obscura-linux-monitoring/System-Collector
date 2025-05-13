@@ -117,6 +117,12 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		"has_neon":            metrics.CPU.HasNEON,
 		"has_sve":             metrics.CPU.HasSVE,
 		"is_hyperthreading":   metrics.CPU.IsHyperthreading,
+		"l1_cache_size":       metrics.CPU.L1CacheSize,
+		"l2_cache_size":       metrics.CPU.L2CacheSize,
+		"l3_cache_size":       metrics.CPU.L3CacheSize,
+		"base_clock_speed":    metrics.CPU.BaseClockSpeed,
+		"max_clock_speed":     metrics.CPU.MaxClockSpeed,
+		"min_clock_speed":     metrics.CPU.MinClockSpeed,
 	}
 
 	// CPU 코어별 정보 추가
@@ -295,6 +301,24 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		servicePoint := influxdb2.NewPoint("service", serviceTags, serviceFields, metrics.Timestamp)
 		points = append(points, servicePoint)
 	}
+
+	// 8. 시스템 정보 메트릭스
+	systemTags := map[string]string{
+		"node_id":     metrics.Key,
+		"obscura_key": metrics.USER_ID,
+	}
+
+	systemFields := map[string]interface{}{
+		"os_name":           metrics.System.OSName,
+		"os_version":        metrics.System.OSVersion,
+		"os_architecture":   metrics.System.OSArchitecture,
+		"os_kernel_version": metrics.System.OSKernelVersion,
+		"boot_time":         metrics.System.BootTime,
+		"uptime":            metrics.System.Uptime,
+	}
+
+	systemPoint := influxdb2.NewPoint("system", systemTags, systemFields, metrics.Timestamp)
+	points = append(points, systemPoint)
 
 	// 모든 포인트를 한 번에 전송
 	i.WritePoints(points)

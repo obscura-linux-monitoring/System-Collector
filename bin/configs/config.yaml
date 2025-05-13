@@ -7,9 +7,6 @@ influxdb:
   token: "y9VwBZ2l13p1JPuBC9jffWojhnTmUG4N4wygIzhOhOOlyNf1MrJlVgRglw6uvpcRDQfc7umLsOhoL28i88Kinw=="
   org: "hoseo"
   bucket: "dev-test"
-  
-collector:
-  interval: 1 # 수집 간격(초)
 
 postgres:
   host: localhost
@@ -18,3 +15,6 @@ postgres:
   password: hoseo
   dbname: obscura
   sslmode: disable
+
+webServer:
+  url: "http://localhost:8000"

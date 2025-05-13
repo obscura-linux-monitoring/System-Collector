@@ -17,9 +17,6 @@ type Config struct {
 		Org    string `yaml:"org"`
 		Bucket string `yaml:"bucket"`
 	} `yaml:"influxdb"`
-	Collector struct {
-		Interval int `yaml:"interval"`
-	} `yaml:"collector"`
 	Postgres struct {
 		Host     string `yaml:"host"`
 		Port     int    `yaml:"port"`
@@ -28,6 +25,9 @@ type Config struct {
 		DBName   string `yaml:"dbname"`
 		SSLMode  string `yaml:"sslmode"`
 	} `yaml:"postgres"`
+	WebServer struct {
+		URL string `yaml:"url"`
+	} `yaml:"webServer"`
 }
 
 var cfg *Config
