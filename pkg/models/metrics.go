@@ -50,6 +50,12 @@ type SystemInfo struct {
 	BootTime int64 `json:"boot_time"`
 	// Uptime은 시스템 가동 시간을 나타냅니다
 	Uptime int64 `json:"uptime"`
+	// TotalProcesses는 시스템에 실행 중인 프로세스 수를 나타냅니다
+	TotalProcesses uint64 `json:"total_processes"`
+	// TotalThreads는 시스템에 실행 중인 스레드 수를 나타냅니다
+	TotalThreads uint64 `json:"total_threads"`
+	// TotalFileDescriptors는 시스템에 열린 파일 디스크립터 수를 나타냅니다
+	TotalFileDescriptors uint64 `json:"total_file_descriptors"`
 }
 
 // CPUMetrics는 CPU 관련 메트릭스를 포함하는 구조체입니다.
@@ -134,6 +140,18 @@ type MemoryMetrics struct {
 	SwapFree int64 `json:"swap_free"`
 	// UsagePercent는 메모리 사용률을 백분율로 나타냅니다
 	UsagePercent float64 `json:"usage_percent"`
+	// DataRate는 메모리 속도 (MT/s)를 나타냅니다
+	DataRate uint64 `json:"data_rate"`
+	// UsingSlotCount는 사용 중인 슬롯 수를 나타냅니다
+	UsingSlotCount uint16 `json:"using_slot_count"`
+	// TotalSlotCount는 총 슬롯 수를 나타냅니다
+	TotalSlotCount uint16 `json:"total_slot_count"`
+	// FormFactor는 메모리 형식을 나타냅니다
+	FormFactor string `json:"form_factor"`
+	// PagedPoolSize는 페이지 풀 크기 (바이트)를 나타냅니다
+	PagedPoolSize uint64 `json:"paged_pool_size"`
+	// NonPagedPoolSize는 비페이지 풀 크기를 나타냅니다
+	NonPagedPoolSize uint64 `json:"non_paged_pool_size"`
 }
 
 // DiskMetrics는 개별 디스크의 사용량 정보를 포함하는 구조체입니다.

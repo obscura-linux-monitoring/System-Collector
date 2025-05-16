@@ -136,16 +136,22 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 
 	// 2. 메모리 메트릭스
 	memFields := map[string]interface{}{
-		"total":         metrics.Memory.Total,
-		"used":          metrics.Memory.Used,
-		"free":          metrics.Memory.Free,
-		"available":     metrics.Memory.Available,
-		"buffers":       metrics.Memory.Buffers,
-		"cached":        metrics.Memory.Cached,
-		"swap_total":    metrics.Memory.SwapTotal,
-		"swap_used":     metrics.Memory.SwapUsed,
-		"swap_free":     metrics.Memory.SwapFree,
-		"usage_percent": metrics.Memory.UsagePercent,
+		"total":               metrics.Memory.Total,
+		"used":                metrics.Memory.Used,
+		"free":                metrics.Memory.Free,
+		"available":           metrics.Memory.Available,
+		"buffers":             metrics.Memory.Buffers,
+		"cached":              metrics.Memory.Cached,
+		"swap_total":          metrics.Memory.SwapTotal,
+		"swap_used":           metrics.Memory.SwapUsed,
+		"swap_free":           metrics.Memory.SwapFree,
+		"usage_percent":       metrics.Memory.UsagePercent,
+		"data_rate":           metrics.Memory.DataRate,
+		"using_slot_count":    metrics.Memory.UsingSlotCount,
+		"total_slot_count":    metrics.Memory.TotalSlotCount,
+		"form_factor":         metrics.Memory.FormFactor,
+		"paged_pool_size":     metrics.Memory.PagedPoolSize,
+		"non_paged_pool_size": metrics.Memory.NonPagedPoolSize,
 	}
 	memPoint := influxdb2.NewPoint("memory", baseTags, memFields, metrics.Timestamp)
 	points = append(points, memPoint)
@@ -309,12 +315,15 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 	}
 
 	systemFields := map[string]interface{}{
-		"os_name":           metrics.System.OSName,
-		"os_version":        metrics.System.OSVersion,
-		"os_architecture":   metrics.System.OSArchitecture,
-		"os_kernel_version": metrics.System.OSKernelVersion,
-		"boot_time":         metrics.System.BootTime,
-		"uptime":            metrics.System.Uptime,
+		"os_name":                metrics.System.OSName,
+		"os_version":             metrics.System.OSVersion,
+		"os_architecture":        metrics.System.OSArchitecture,
+		"os_kernel_version":      metrics.System.OSKernelVersion,
+		"boot_time":              metrics.System.BootTime,
+		"uptime":                 metrics.System.Uptime,
+		"total_processes":        metrics.System.TotalProcesses,
+		"total_threads":          metrics.System.TotalThreads,
+		"total_file_descriptors": metrics.System.TotalFileDescriptors,
 	}
 
 	systemPoint := influxdb2.NewPoint("system", systemTags, systemFields, metrics.Timestamp)
