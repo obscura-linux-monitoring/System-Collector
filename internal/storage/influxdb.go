@@ -211,20 +211,22 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		}
 
 		netFields := map[string]interface{}{
-			"ip":           network.IP,
-			"mtu":          network.MTU,
-			"speed":        network.Speed,
-			"status":       network.Status,
-			"rx_bytes":     network.RxBytes,
-			"tx_bytes":     network.TxBytes,
-			"rx_packets":   network.RxPackets,
-			"tx_packets":   network.TxPackets,
-			"rx_errors":    network.RxErrors,
-			"tx_errors":    network.TxErrors,
-			"rx_dropped":   network.RxDropped,
-			"tx_dropped":   network.TxDropped,
-			"rx_bytes_sec": network.RxBytesPerSec,
-			"tx_bytes_sec": network.TxBytesPerSec,
+			"ipv4":            network.IPv4,
+			"ipv6":            network.IPv6,
+			"mtu":             network.MTU,
+			"speed":           network.Speed,
+			"status":          network.Status,
+			"rx_bytes":        network.RxBytes,
+			"tx_bytes":        network.TxBytes,
+			"rx_packets":      network.RxPackets,
+			"tx_packets":      network.TxPackets,
+			"rx_errors":       network.RxErrors,
+			"tx_errors":       network.TxErrors,
+			"rx_dropped":      network.RxDropped,
+			"tx_dropped":      network.TxDropped,
+			"rx_bytes_sec":    network.RxBytesPerSec,
+			"tx_bytes_sec":    network.TxBytesPerSec,
+			"connection_type": network.ConnectionType,
 		}
 
 		netPoint := influxdb2.NewPoint("network", netTags, netFields, metrics.Timestamp)

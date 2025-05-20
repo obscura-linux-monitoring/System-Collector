@@ -226,8 +226,10 @@ type DiskIOStats struct {
 type NetworkMetrics struct {
 	// Interface는 네트워크 인터페이스 이름을 나타냅니다
 	Interface string `json:"interface"`
-	// IP는 인터페이스의 IP 주소를 나타냅니다
-	IP string `json:"ip"`
+	// IPv4는 인터페이스의 IPv4 주소를 나타냅니다
+	IPv4 string `json:"ipv4"`
+	// IPv6는 인터페이스의 IPv6 주소를 나타냅니다
+	IPv6 string `json:"ipv6"`
 	// MAC은 인터페이스의 MAC 주소를 나타냅니다
 	MAC string `json:"mac"`
 	// MTU는 최대 전송 단위를 나타냅니다
@@ -256,6 +258,8 @@ type NetworkMetrics struct {
 	RxBytesPerSec float64 `json:"rx_bytes_per_sec"`
 	// TxBytesPerSec는 초당 전송 바이트를 나타냅니다
 	TxBytesPerSec float64 `json:"tx_bytes_per_sec"`
+	// ConnectionType은 연결 유형을 나타냅니다
+	ConnectionType string `json:"connection_type"`
 }
 
 // ProcessInfo는 개별 프로세스의 상태 정보를 포함하는 구조체입니다.
