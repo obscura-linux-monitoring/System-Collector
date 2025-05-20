@@ -180,6 +180,14 @@ type DiskMetrics struct {
 	ErrorFlag bool `json:"error_flag"`
 	// ErrorMessage는 디스크 오류 메시지를 나타냅니다
 	ErrorMessage string `json:"error_message"`
+	// ModelName은 디스크 모델명을 나타냅니다
+	ModelName string `json:"model_name"`
+	// Type은 디스크 타입을 나타냅니다
+	Type string `json:"type"`
+	// IsSystemDisk는 시스템 디스크 여부를 나타냅니다
+	IsSystemDisk bool `json:"is_system_disk"`
+	// IsPageFileDisk는 페이지 파일 디스크 여부를 나타냅니다
+	IsPageFileDisk bool `json:"is_page_file_disk"`
 	// IOStats는 디스크 I/O 통계를 나타냅니다
 	IOStats DiskIOStats `json:"io_stats"`
 }

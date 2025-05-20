@@ -167,15 +167,19 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 		}
 
 		diskFields := map[string]interface{}{
-			"total":         disk.Total,
-			"used":          disk.Used,
-			"free":          disk.Free,
-			"usage_percent": disk.UsagePercent,
-			"inodes_total":  disk.InodesTotal,
-			"inodes_used":   disk.InodesUsed,
-			"inodes_free":   disk.InodesFree,
-			"error_flag":    disk.ErrorFlag,
-			"error_message": disk.ErrorMessage,
+			"total":             disk.Total,
+			"used":              disk.Used,
+			"free":              disk.Free,
+			"usage_percent":     disk.UsagePercent,
+			"inodes_total":      disk.InodesTotal,
+			"inodes_used":       disk.InodesUsed,
+			"inodes_free":       disk.InodesFree,
+			"error_flag":        disk.ErrorFlag,
+			"error_message":     disk.ErrorMessage,
+			"model_name":        disk.ModelName,
+			"type":              disk.Type,
+			"is_system_disk":    disk.IsSystemDisk,
+			"is_page_file_disk": disk.IsPageFileDisk,
 		}
 
 		// IO 통계 추가
