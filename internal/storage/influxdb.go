@@ -287,6 +287,46 @@ func (i *InfluxDBClient) StoreMetrics(metrics *models.SystemMetrics) error {
 			"block_write":      container.BlockWrite,
 			"pids":             container.PIDs,
 			"restarts":         container.Restarts,
+			// Health 정보 추가
+			"health_status":            container.Health.Status,
+			"health_failing_streak":    container.Health.FailingStreak,
+			"health_last_check_output": container.Health.LastCheckOutput,
+		}
+
+		// 레이블 정보 추가
+		for i, label := range container.Labels {
+			containerFields[fmt.Sprintf("label_%d_key", i)] = label.Key
+			containerFields[fmt.Sprintf("label_%d_value", i)] = label.Value
+		}
+
+		// 포트 정보 추가
+		for i, port := range container.Ports {
+			containerFields[fmt.Sprintf("port_%d_container", i)] = port.ContainerPort
+			containerFields[fmt.Sprintf("port_%d_host", i)] = port.HostPort
+			containerFields[fmt.Sprintf("port_%d_protocol", i)] = port.Protocol
+		}
+
+		// 네트워크 정보 추가
+		for i, network := range container.Networks {
+			containerFields[fmt.Sprintf("network_%d_name", i)] = network.Name
+			containerFields[fmt.Sprintf("network_%d_ip", i)] = network.IP
+			containerFields[fmt.Sprintf("network_%d_mac", i)] = network.MAC
+			containerFields[fmt.Sprintf("network_%d_rx_bytes", i)] = network.RxBytes
+			containerFields[fmt.Sprintf("network_%d_tx_bytes", i)] = network.TxBytes
+		}
+
+		// 볼륨 정보 추가
+		for i, volume := range container.Volumes {
+			containerFields[fmt.Sprintf("volume_%d_source", i)] = volume.Source
+			containerFields[fmt.Sprintf("volume_%d_destination", i)] = volume.Destination
+			containerFields[fmt.Sprintf("volume_%d_mode", i)] = volume.Mode
+			containerFields[fmt.Sprintf("volume_%d_type", i)] = volume.Type
+		}
+
+		// 환경 변수 정보 추가
+		for i, env := range container.Env {
+			containerFields[fmt.Sprintf("env_%d_key", i)] = env.Key
+			containerFields[fmt.Sprintf("env_%d_value", i)] = env.Value
 		}
 
 		containerPoint := influxdb2.NewPoint("container", containerTags, containerFields, metrics.Timestamp)

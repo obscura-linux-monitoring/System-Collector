@@ -1,4 +1,3 @@
-// Package models는 시스템 메트릭스 수집을 위한 데이터 모델을 제공합니다.
 package models
 
 import (
@@ -12,8 +11,6 @@ type SystemMetrics struct {
 	USER_ID string `json:"user_id"`
 	// Key는 메트릭스의 고유 식별자입니다
 	Key string `json:"key"`
-	// CommandResults는 명령어 실행 결과를 포함합니다
-	CommandResults []CommandResult `json:"command_results"`
 	// Timestamp는 메트릭스가 수집된 시간을 나타냅니다
 	Timestamp time.Time `json:"timestamp"`
 	// System은 시스템 기본 정보를 포함합니다
@@ -40,6 +37,10 @@ type SystemInfo struct {
 	Hostname string `json:"hostname"`
 	// OSName은 운영체제 이름을 나타냅니다
 	OSName string `json:"os_name"`
+	// Platform은 운영체제 플랫폼을 나타냅니다
+	Platform string `json:"platform"`
+	// PlatformFamily은 운영체제 종류를 나타냅니다
+	PlatformFamily string `json:"platform_family"`
 	// OSVersion은 운영체제 버전을 나타냅니다
 	OSVersion string `json:"os_version"`
 	// OSArchitecture는 시스템 아키텍처를 나타냅니다
@@ -369,8 +370,8 @@ type ContainerNetwork struct {
 	Name    string `json:"network_name"`
 	IP      string `json:"network_ip"`
 	MAC     string `json:"network_mac"`
-	RxBytes string `json:"network_rx_bytes"`
-	TxBytes string `json:"network_tx_bytes"`
+	RxBytes uint64 `json:"network_rx_bytes"`
+	TxBytes uint64 `json:"network_tx_bytes"`
 }
 
 // ContainerVolume은 컨테이너 볼륨 마운트 정보를 포함하는 구조체입니다.
@@ -404,7 +405,7 @@ type ServiceInfo struct {
 	// SubState는 서비스 부가 상태를 나타냅니다
 	SubState string `json:"sub_state"`
 	// MemoryUsage는 서비스 메모리 사용량을 나타냅니다
-	MemoryUsage uint64 `json:"memory_usage"`
+	MemoryUsage string `json:"memory_usage"`
 	// CpuUsage는 cpu 사용량을 나타냅니다
 	CpuUsage float64 `json:"cpu_usage"`
 }
@@ -417,4 +418,8 @@ func ToJSON(v interface{}) []byte {
 		return []byte("{}")
 	}
 	return data
+}
+
+func (v *SystemMetrics) String() string {
+	return string(ToJSON(v))
 }

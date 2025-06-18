@@ -23,7 +23,7 @@ func (r *NodeRepository) CreateNode(node *models.Node) error {
 	sugar := logger.GetCustomLogger()
 	sugar.Infow("노드 생성 시작", "node", node)
 
-	query := `INSERT INTO nodes (node_id, obscura_key, server_type) VALUES ($1, $2, $3)`
+	query := `INSERT INTO nodes (node_id, obscura_key, server_type, node_name) VALUES ($1, $2, $3, 'Default')`
 	_, err := r.db.Exec(query, node.NodeID, node.ObscuraKey, node.ServerType)
 	if err != nil {
 		sugar.Errorw("노드 생성 실패", "error", err)

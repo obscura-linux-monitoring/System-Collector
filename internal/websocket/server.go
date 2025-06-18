@@ -93,18 +93,6 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte, clientID st
 		return
 	}
 
-	if len(metrics.CommandResults) > 0 {
-		sugar.Infof("커맨드 결과 전송 시작: %d개", len(metrics.CommandResults))
-
-		// 커맨드 결과 JSON 변환
-		commandResultJSON, err := json.Marshal(metrics.CommandResults)
-		if err != nil {
-			sugar.Errorw("커맨드 결과 JSON 변환 실패", "error", err)
-		} else {
-			s.sendCommandResults(commandResultJSON, metrics.Key, metrics.USER_ID)
-		}
-	}
-
 	exists, err := s.userRepo.ExistsUserByObscuraKey(metrics.USER_ID)
 	if err != nil || !exists {
 		sugar.Errorw("사용자 조회 실패", "error", err)
@@ -153,29 +141,13 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte, clientID st
 		return
 	}
 
-	// 해당 노드의 명령어 조회
-	commands, err := s.cmdRepo.GetCommandsByNodeID(metrics.Key)
-	if err != nil {
-		sugar.Errorw("명령어 조회 실패", "error", err)
-		// 명령어 조회 실패해도 메트릭스는 정상 응답
-		commands = []models.Command{}
-	} else {
-		sugar.Infof("명령어 조회 성공: %v", commands)
-		if len(commands) > 0 {
-			err = s.cmdRepo.DeleteCommandsByNodeID(metrics.Key)
-			if err != nil {
-				sugar.Errorw("명령어 삭제 실패", "error", err)
-			}
-		}
-	}
-
 	// 응답 전송 전에 데드라인 설정
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
 	// 응답 전송
 	response := models.WSResponse{
-		Type:     "metrics_response",
-		Commands: commands,
+		Type:   "metrics_response",
+		Result: "ok",
 	}
 
 	if err := conn.WriteJSON(response); err != nil {
@@ -193,7 +165,7 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte, clientID st
 
 			// 처음 노드 ID가 설정될 때 연결 상태 전송
 			if clientInfo.nodeID != "" {
-				s.sendNodeStatus(clientInfo.nodeID, 1) // 1은 연결됨
+				// s.sendNodeStatus(clientInfo.nodeID, 1) // 1은 연결됨
 				s.updateNodeStatus(clientInfo.nodeID, 1)
 			}
 		}
@@ -245,8 +217,8 @@ func (s *Server) sendErrorResponse(conn *websocket.Conn, errMsg string) {
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
 	response := models.WSResponse{
-		Type:  "error",
-		Error: errMsg,
+		Type:   "error",
+		Result: errMsg,
 	}
 	if err := conn.WriteJSON(response); err != nil {
 		sugar.Errorw("에러 응답 전송 실패", "error", err)
@@ -262,7 +234,7 @@ func (s *Server) handleDisconnect(clientID string, code int, text string) {
 		if clientInfo, ok := value.(*ClientInfo); ok {
 			// nodeID가 있으면 상태 전송
 			if clientInfo.nodeID != "" {
-				s.sendNodeStatus(clientInfo.nodeID, 0) // 0은 연결 끊김
+				// s.sendNodeStatus(clientInfo.nodeID, 0) // 0은 연결 끊김
 				s.updateNodeStatus(clientInfo.nodeID, 0)
 			}
 			clientInfo.conn.Close()
