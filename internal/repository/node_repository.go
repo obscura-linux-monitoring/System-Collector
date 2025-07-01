@@ -36,7 +36,7 @@ func (r *NodeRepository) GetAllNodes() ([]*models.Node, error) {
 	sugar := logger.GetCustomLogger()
 	sugar.Infow("모든 노드 조회 시작")
 
-	query := `SELECT node_id, obscura_key, server_type FROM nodes`
+	query := `SELECT node_id, obscura_key, server_type, COALESCE(external_ip, '') FROM nodes`
 	rows, err := r.db.Query(query)
 	if err != nil {
 		sugar.Errorw("모든 노드 조회 실패", "error", err)
@@ -47,7 +47,7 @@ func (r *NodeRepository) GetAllNodes() ([]*models.Node, error) {
 	nodes := []*models.Node{}
 	for rows.Next() {
 		var node models.Node
-		err := rows.Scan(&node.NodeID, &node.ObscuraKey, &node.ServerType)
+		err := rows.Scan(&node.NodeID, &node.ObscuraKey, &node.ServerType, &node.ExternalIP)
 		if err != nil {
 			sugar.Errorw("노드 데이터 스캔 오류", "error", err)
 			return nil, err
@@ -69,5 +69,21 @@ func (r *NodeRepository) UpdateNodeStatus(nodeID string, status int) error {
 		sugar.Errorw("노드 상태 업데이트 실패", "error", err)
 		return err
 	}
+	return nil
+}
+
+// UpdateNodeExternalIP는 노드의 외부 IP 주소를 업데이트합니다.
+func (r *NodeRepository) UpdateNodeExternalIP(nodeID, externalIP string) error {
+	sugar := logger.GetCustomLogger()
+	sugar.Infow("노드 외부 IP 업데이트", "nodeID", nodeID, "externalIP", externalIP)
+
+	query := `UPDATE nodes SET external_ip = $1 WHERE node_id = $2`
+	_, err := r.db.Exec(query, externalIP, nodeID)
+	if err != nil {
+		sugar.Errorw("노드 외부 IP 업데이트 실패", "error", err, "nodeID", nodeID, "externalIP", externalIP)
+		return err
+	}
+
+	sugar.Infow("노드 외부 IP 업데이트 성공", "nodeID", nodeID, "externalIP", externalIP)
 	return nil
 }

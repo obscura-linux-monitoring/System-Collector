@@ -28,6 +28,8 @@ type Server struct {
 	nodeList   []*models.Node
 	clients    sync.Map // clientID -> *ClientInfo
 	maxClients int
+	// nodeExternalIPs는 노드별 외부 IP를 관리하는 map입니다.
+	nodeExternalIPs sync.Map // nodeID -> externalIP (string)
 }
 
 // 클라이언트 정보를 저장할 구조체 추가
@@ -47,7 +49,7 @@ func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.Comm
 		nodes = []*models.Node{} // 빈 배열로 초기화
 	}
 
-	return &Server{
+	server := &Server{
 		upgrader: websocket.Upgrader{
 			CheckOrigin:     func(r *http.Request) bool { return true },
 			ReadBufferSize:  1024,
@@ -61,6 +63,16 @@ func NewServer(store func(*models.SystemMetrics) error, cmdRepo *repository.Comm
 		nodeList:   nodes, // 조회한 사용자 목록 설정
 		maxClients: 1000,
 	}
+
+	// 기존 노드들의 external_ip를 map에 로드
+	for _, node := range nodes {
+		if node.ExternalIP != "" {
+			server.nodeExternalIPs.Store(node.NodeID, node.ExternalIP)
+			sugar.Infow("기존 노드 외부 IP 로드", "nodeID", node.NodeID, "externalIP", node.ExternalIP)
+		}
+	}
+
+	return server
 }
 
 func (s *Server) Start() {
@@ -132,6 +144,11 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte, clientID st
 		}
 	}
 
+	// External IP 관리 로직
+	if metrics.ExternalIP != "" {
+		s.handleExternalIPUpdate(metrics.Key, metrics.ExternalIP)
+	}
+
 	sugar.Infof("메트릭스 키: %s", metrics.Key)
 
 	// 메트릭스 저장
@@ -169,6 +186,54 @@ func (s *Server) handleMessage(conn *websocket.Conn, message []byte, clientID st
 				s.updateNodeStatus(clientInfo.nodeID, 1)
 			}
 		}
+	}
+}
+
+// handleExternalIPUpdate는 외부 IP 변경을 처리합니다.
+func (s *Server) handleExternalIPUpdate(nodeID, newExternalIP string) {
+	sugar := logger.GetCustomLogger()
+
+	// 기존 external IP 조회
+	storedIPInterface, exists := s.nodeExternalIPs.Load(nodeID)
+	var storedIP string
+	if exists {
+		storedIP = storedIPInterface.(string)
+	}
+
+	// 새로운 IP가 있고, 기존 IP와 다른 경우에만 업데이트
+	if newExternalIP != "" && newExternalIP != storedIP {
+		sugar.Infow("노드 외부 IP 변경 감지",
+			"nodeID", nodeID,
+			"oldExternalIP", storedIP,
+			"newExternalIP", newExternalIP)
+
+		// map 업데이트
+		s.nodeExternalIPs.Store(nodeID, newExternalIP)
+
+		// PostgreSQL DB 업데이트
+		go func() {
+			if err := s.nodeRepo.UpdateNodeExternalIP(nodeID, newExternalIP); err != nil {
+				sugar.Errorw("노드 외부 IP DB 업데이트 실패",
+					"error", err,
+					"nodeID", nodeID,
+					"externalIP", newExternalIP)
+
+				// DB 업데이트 실패 시 map에서 원래 값으로 롤백
+				if exists {
+					s.nodeExternalIPs.Store(nodeID, storedIP)
+				} else {
+					s.nodeExternalIPs.Delete(nodeID)
+				}
+			} else {
+				sugar.Infow("노드 외부 IP 업데이트 완료",
+					"nodeID", nodeID,
+					"externalIP", newExternalIP)
+			}
+		}()
+	} else if newExternalIP != "" && newExternalIP == storedIP {
+		sugar.Debugw("노드 외부 IP 변경 없음",
+			"nodeID", nodeID,
+			"externalIP", newExternalIP)
 	}
 }
 
